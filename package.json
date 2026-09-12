@@ -1,0 +1,33 @@
+{
+  "name": "hackathon-judging",
+  "version": "2.0.0",
+  "description": "Hackathon Judging Management System - admin + judges, raw & normalized scoring, dashboards and exports. Runs on SQLite or Supabase/PostgreSQL.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --no-warnings=ExperimentalWarning src/server.js",
+    "dev": "node --no-warnings=ExperimentalWarning --watch src/server.js",
+    "seed": "node --no-warnings=ExperimentalWarning src/seed.js",
+    "seed:demo": "node --no-warnings=ExperimentalWarning src/seed.js --demo",
+    "import": "node --no-warnings=ExperimentalWarning src/import-registrations.js",
+    "db:setup": "node --no-warnings=ExperimentalWarning scripts/db-setup.js",
+    "db:check": "node --no-warnings=ExperimentalWarning scripts/db-check.js",
+    "db:push": "node --no-warnings=ExperimentalWarning scripts/db-push.js",
+    "db:dump": "node --no-warnings=ExperimentalWarning scripts/db-dump.js",
+    "db:reset-scores": "node --no-warnings=ExperimentalWarning scripts/db-setup.js sql/900_reset_scores.sql",
+    "test": "node --no-warnings=ExperimentalWarning --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Judge · Hackathon Judging</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="judge-body">
+  <header class="topbar">
+    <div class="brand compact">
+      <div class="brand-mark">HD</div>
+      <div>
+        <div class="brand-title" id="eventName">Hack Days Solan 2026</div>
+        <div class="brand-sub" id="judgeMeta">Judge portal</div>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span id="lockBadge" class="badge danger" hidden>Judging locked</span>
+      <button class="btn ghost sm" id="pwBtn">Change password</button>
+      <button class="btn ghost sm" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <main class="judge-layout">
+    <aside class="team-pane" id="teamPane">
+      <div class="pane-head">
+        <h2>My teams</h2>
+        <div class="progress-wrap"><div class="progress"><div class="progress-bar" id="progressBar"></div></div><span class="small muted" id="progressText"></span></div>
+      </div>
+      <div id="teamList" class="team-list"><div class="empty">Loading…</div></div>
+    </aside>
+    <section class="score-pane" id="scorePane">
+      <div class="empty-state" id="emptyState">
+        <h3>Select a team to start scoring</h3>
+        <p class="muted">You can save a draft at any time and submit when you are done. Only you and the organisers can see your scores.</p>
+      </div>
+      <div id="scoreForm" hidden></div>
+    </section>
+  </main>
+
+  <div id="toastHost" class="toast-host"></div>
+  <div id="modalHost"></div>
+  <script src="/js/api.js"></script>
+  <script src="/js/judge.js"></script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+node_modules/
+data/*.db
+data/*.db-*
+.env
+sql/002_data.sql
+data/judge-credentials.txt

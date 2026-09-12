@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "judging-server", "runtimeExecutable": "node", "runtimeArgs": ["--no-warnings=ExperimentalWarning", "src/server.js"], "port": 3000 }
+  ]
+}

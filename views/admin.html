@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · Hackathon Judging</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="admin-body">
+  <header class="topbar">
+    <button class="btn ghost sm nav-toggle" id="navToggle" aria-label="Menu">☰</button>
+    <div class="brand compact">
+      <div class="brand-mark">HD</div>
+      <div>
+        <div class="brand-title" id="eventName">Hack Days Solan 2026</div>
+        <div class="brand-sub">Enkindle Club · Admin console</div>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span id="lockBadge" class="badge danger" hidden>Judging locked</span>
+      <span class="small muted" id="whoami"></span>
+      <button class="btn ghost sm" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <div class="admin-layout">
+    <nav class="sidebar" id="sidebar">
+      <div class="nav-group">Analytics</div>
+      <a href="#dashboard" data-route="dashboard">Dashboard</a>
+      <a href="#rankings" data-route="rankings">Overall rankings</a>
+      <a href="#team-scores" data-route="team-scores">Team-wise scores</a>
+      <a href="#judge-records" data-route="judge-records">Judge-wise records</a>
+      <a href="#faculty-stats" data-route="faculty-stats">Faculty-wise</a>
+      <a href="#panel-stats" data-route="panel-stats">Panel-wise</a>
+      <a href="#completion" data-route="completion">Completion status</a>
+      <a href="#export" data-route="export">Export</a>
+      <div class="nav-group">Manage</div>
+      <a href="#teams" data-route="teams">Teams</a>
+      <a href="#judges" data-route="judges">Judges</a>
+      <a href="#assignments" data-route="assignments">Assignments</a>
+      <a href="#panels" data-route="panels">Panels</a>
+      <a href="#faculties" data-route="faculties">Faculties</a>
+      <a href="#criteria" data-route="criteria">Criteria</a>
+      <div class="nav-group">System</div>
+      <a href="#settings" data-route="settings">Settings</a>
+      <a href="#audit" data-route="audit">Audit log</a>
+    </nav>
+    <main class="content">
+      <div class="filter-bar" id="filterBar">
+        <label>Faculty <select id="fFaculty"></select></label>
+        <label>Panel <select id="fPanel"></select></label>
+        <label>Judge <select id="fJudge"></select></label>
+        <label>Team <select id="fTeam"></select></label>
+        <button class="btn ghost sm" id="fClear">Clear</button>
+        <span class="spacer"></span>
+        <label class="inline"><input type="checkbox" id="autoRefresh" checked> Auto-refresh</label>
+        <button class="btn sm" id="refreshBtn">Refresh</button>
+        <span class="small muted" id="lastUpdated"></span>
+      </div>
+      <div id="view"><div class="empty">Loading…</div></div>
+    </main>
+  </div>
+
+  <div id="toastHost" class="toast-host"></div>
+  <div id="modalHost"></div>
+  <script src="/js/api.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>
