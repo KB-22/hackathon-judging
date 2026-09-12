@@ -43,7 +43,10 @@ database connection. Supabase has a pooler built for exactly that, on **port
 6543**. The session pooler on port 5432 holds one connection per client and will
 exhaust under Vercel's scaling.
 
-Take your session pooler string and change the port from `5432` to `6543`:
+**On Vercel you must use a pooler host, not the Direct connection.** The direct
+host `db.<ref>.supabase.co` resolves over IPv6 only on the free plan, and
+Vercel functions cannot be relied on to have IPv6 egress. The pooler hosts are
+IPv4. Take the pooler string and change the port from `5432` to `6543`:
 
 ```
 postgresql://postgres.lfikmecdfjnftvnzlnec:Rahulsingh123%40@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres
@@ -63,6 +66,15 @@ Vercel, which is what the transaction pooler expects.
 ---
 
 ## Step 3 — Environment variables in Vercel
+
+> **`NEXT_PUBLIC_*` variables do nothing here.** If you connected the Supabase
+> integration to your Vercel project it will have added
+> `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+> automatically. Those are for Next.js frontends that talk to Supabase over
+> HTTP. This app is a plain Express server that connects straight to Postgres,
+> so it ignores them completely. Leaving them set is harmless, but on their own
+> they leave the app unconfigured and it will refuse to start.
+
 
 Project → **Settings → Environment Variables**. Add all of these for the
 **Production** environment (and Preview, if you want previews to work):
