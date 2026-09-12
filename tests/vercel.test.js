@@ -168,8 +168,8 @@ test('a weak ADMIN_PASSWORD is refused only while no admin exists', async () => 
 
 test('vercel.json routes everything to the function and bundles the views', () => {
   const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'vercel.json'), 'utf8'));
-  assert.equal(cfg.rewrites[0].destination, '/api/index');
-  assert.equal(cfg.rewrites[0].source, '/(.*)');
+  assert.match(cfg.rewrites[0].destination, /^\/api\/index/);
+  assert.match(cfg.rewrites[0].source, /^\/:path\*$|^\/\(\.\*\)$/);
   const fn = cfg.functions['api/index.js'];
   assert.ok(fn, 'the function is configured');
   assert.match(fn.includeFiles, /views/, 'views/ must be bundled or the HTML shells 404 in production');
@@ -212,4 +212,36 @@ test('a hosted platform still requires a real SESSION_SECRET', async () => {
     assert.equal(res.status, 503);
     assert.match((await res.json()).detail.join(' '), /SESSION_SECRET must be set/i);
   });
+});
+
+test('requests still route correctly if Vercel passes the rewrite destination', async () => {
+  // Vercel changed whether a rewritten request arrives with its original path
+  // or with the destination ("/api/index"). Under the new behaviour every route
+  // would otherwise fall through to the 404 page.
+  await withHandler(LOCAL_ENV(), async (base) => {
+    const login = await fetch(`${base}/api/index?__p=/`);
+    assert.equal(login.status, 200);
+    assert.match(await login.text(), /Sign in/, 'root resolved from the __p parameter');
+
+    const health = await fetch(`${base}/api/index?__p=/healthz`);
+    assert.equal(health.status, 200);
+    assert.equal((await health.json()).ok, true);
+
+    // Query strings on the original request must survive the round trip.
+    const csv = await fetch(`${base}/api/index?__p=/api/admin/export/csv&dataset=rankings`, {
+      headers: { 'X-Requested-With': 'fetch' },
+    });
+    assert.equal(csv.status, 401, 'reached the admin route, which then demanded auth');
+
+    // And the original behaviour, where the path arrives untouched, still works.
+    const direct = await fetch(`${base}/healthz`);
+    assert.equal(direct.status, 200);
+  });
+});
+
+test('vercel.json carries the original path through the rewrite', () => {
+  const cfg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'vercel.json'), 'utf8'));
+  const rw = cfg.rewrites[0];
+  assert.match(rw.destination, /__p=/, 'the destination must carry the original path');
+  assert.match(rw.destination, /^\/api\/index/);
 });

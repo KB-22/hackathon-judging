@@ -167,6 +167,10 @@ so with several concurrent Vercel instances an attacker gets a few more attempts
 than on a single server. For a six-judge event this is not a practical concern,
 but do not treat the deployed app as hardened against a determined attacker.
 
+**Delete any other deployment.** If the repo was also connected to Render,
+Railway or similar, delete that service. Two live deployments of a judging app
+is a way to lose scores: people bookmark whichever URL they were sent.
+
 **Rotate the database password.** It was shared in plain text during setup.
 Supabase Dashboard → Settings → Database → Reset database password, then update
 `SUPABASE_DB_URL` in both Vercel and your local `.env`.

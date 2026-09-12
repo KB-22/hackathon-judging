@@ -41,8 +41,31 @@ function reportBootFailure(res, err) {
   }
 }
 
+/**
+ * Restores the original request path.
+ *
+ * Everything is rewritten to this function, and Vercel has changed whether the
+ * app sees the original path or the rewrite destination ("/api/index"). If it
+ * sees the destination, every route would fall through to the 404 handler. The
+ * rewrite therefore carries the real path in a `__p` query parameter, which we
+ * put back here. Harmless under the older behaviour, where the path already
+ * arrives intact.
+ */
+function restorePath(req) {
+  if (!req.url) return;
+  const url = new URL(req.url, 'http://localhost');
+  if (!/^\/api\/index\/?$/.test(url.pathname)) return;
+  const original = url.searchParams.get('__p');
+  if (original === null) return;
+  url.searchParams.delete('__p');
+  const query = url.searchParams.toString();
+  const path = original.startsWith('/') ? original : `/${original}`;
+  req.url = query ? `${path}?${query}` : path;
+}
+
 module.exports = async (req, res) => {
   try {
+    restorePath(req);
     if (!appPromise) {
       // Clearing the cached promise on failure lets the next request retry
       // rather than serving the same error until the container is recycled.
