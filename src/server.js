@@ -37,7 +37,7 @@ function loadViews() {
   return out;
 }
 
-const isDeployed = () => db.IS_SERVERLESS || process.env.NODE_ENV === 'production';
+const isDeployed = () => db.IS_HOSTED;
 
 /**
  * Checked before any database work, so a misconfigured deployment fails on the
@@ -93,7 +93,7 @@ async function createApp() {
   // Behind Vercel/nginx the client IP and protocol arrive in X-Forwarded-*.
   // Without this, rate limiting and the audit log would record the proxy's IP
   // and secure cookies would be dropped.
-  if (db.IS_SERVERLESS || process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
+  if (db.IS_HOSTED || process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
 
   app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');

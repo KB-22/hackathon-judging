@@ -42,7 +42,20 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'judgi
 const CONNECTION_STRING = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL || '';
 /** True on Vercel / Lambda / Netlify: read-only disk, containers come and go. */
 const IS_SERVERLESS = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
+/**
+ * True on any public hosting platform, serverless or not. Render, Railway, Fly
+ * and Heroku run a long-lived process, so SQLite can work there - but only with
+ * a persistent disk attached. Without one the container filesystem is wiped on
+ * every deploy, restart and idle spin-down, which would silently destroy a
+ * judging session. Either way the app is publicly reachable, so it must not
+ * come up with default credentials.
+ */
+const IS_HOSTED = IS_SERVERLESS || !!(
+  process.env.RENDER || process.env.RAILWAY_ENVIRONMENT || process.env.FLY_APP_NAME ||
+  process.env.DYNO || process.env.KOYEB_APP_NAME || process.env.NODE_ENV === 'production');
 const IS_POSTGRES = ['postgres', 'pg', 'supabase'].includes(DRIVER);
+/** Escape hatch for a host with a real persistent disk mounted at DB_PATH. */
+const ALLOW_EPHEMERAL_SQLITE = process.env.ALLOW_EPHEMERAL_SQLITE === '1';
 
 let driver = null;
 let bootstrapInfo = null;
@@ -60,6 +73,14 @@ async function init() {
       'DB_DRIVER=sqlite cannot run on a serverless host. The filesystem is read-only and each\n' +
       'invocation may get a fresh container, so every score would be lost immediately.\n' +
       'Set DB_DRIVER=postgres and SUPABASE_DB_URL in the project environment variables.');
+  }
+  if (!IS_POSTGRES && IS_HOSTED && !ALLOW_EPHEMERAL_SQLITE) {
+    throw new Error(
+      'Refusing to start: this looks like a hosted deployment but DB_DRIVER is sqlite.\n' +
+      'Container filesystems are wiped on every deploy, restart and idle spin-down, so the\n' +
+      'database would start empty each time and judging scores would be lost without warning.\n\n' +
+      'Set DB_DRIVER=postgres and SUPABASE_DB_URL in the service environment variables.\n' +
+      'If you genuinely have a persistent disk mounted at DB_PATH, set ALLOW_EPHEMERAL_SQLITE=1.');
   }
   driver = IS_POSTGRES
     ? require('./drivers/postgres').create({ connectionString: CONNECTION_STRING })
@@ -183,5 +204,6 @@ module.exports = {
   DRIVER,
   DB_PATH,
   IS_SERVERLESS,
+  IS_HOSTED,
   IS_POSTGRES,
 };

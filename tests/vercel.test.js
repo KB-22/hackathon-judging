@@ -129,10 +129,12 @@ test('deploying without SESSION_SECRET is refused before any database call', asy
 });
 
 test('a short SESSION_SECRET is treated as unset', async () => {
-  const { assertSessionSecret } = require('../src/server');
   const saved = { ...process.env };
   try {
+    // Deployment context is read when the module loads, so set it first.
     process.env.NODE_ENV = 'production';
+    resetModules();
+    const { assertSessionSecret } = require('../src/server');
     process.env.SESSION_SECRET = 'too-short';
     assert.throws(() => assertSessionSecret(), /SESSION_SECRET must be set/);
     process.env.SESSION_SECRET = 'y'.repeat(32);
@@ -145,10 +147,11 @@ test('a short SESSION_SECRET is treated as unset', async () => {
 });
 
 test('a weak ADMIN_PASSWORD is refused only while no admin exists', async () => {
-  const { assertAdminPassword } = require('../src/server');
   const saved = { ...process.env };
   try {
     process.env.NODE_ENV = 'production';
+    resetModules();
+    const { assertAdminPassword } = require('../src/server');
     process.env.ADMIN_PASSWORD = 'admin12345';   // 10 chars, allowed
     assert.doesNotThrow(() => assertAdminPassword(0));
     process.env.ADMIN_PASSWORD = 'short';
@@ -179,4 +182,34 @@ test('every view referenced by the server exists on disk', () => {
   for (const f of ['login.html', 'admin.html', 'judge.html', '404.html']) {
     assert.ok(views[f] && views[f].length > 100, `${f} loaded`);
   }
+});
+
+test('a hosted platform running SQLite is refused, so scores cannot vanish on redeploy', async () => {
+  // Render, Railway, Fly and Heroku keep a long-lived process, but their
+  // container disk is wiped on every deploy and idle spin-down.
+  for (const platform of [{ RENDER: 'true' }, { RAILWAY_ENVIRONMENT: 'production' }, { FLY_APP_NAME: 'x' }, { DYNO: 'web.1' }]) {
+    await withHandler({ ...LOCAL_ENV(), ...platform }, async (base) => {
+      const res = await fetch(`${base}/`);
+      assert.equal(res.status, 503, `${Object.keys(platform)[0]} must refuse SQLite`);
+      const detail = (await res.json()).detail.join(' ');
+      assert.match(detail, /Refusing to start/i);
+      assert.match(detail, /DB_DRIVER=postgres/);
+    });
+  }
+});
+
+test('a hosted platform with an explicit persistent disk may keep SQLite', async () => {
+  await withHandler({ ...LOCAL_ENV(), RENDER: 'true', ALLOW_EPHEMERAL_SQLITE: '1' }, async (base) => {
+    const res = await fetch(`${base}/healthz`);
+    assert.equal(res.status, 200, 'the opt-out lets a persistent-disk deployment through');
+    assert.equal((await res.json()).ok, true);
+  });
+});
+
+test('a hosted platform still requires a real SESSION_SECRET', async () => {
+  await withHandler({ ...LOCAL_ENV(), RENDER: 'true', SESSION_SECRET: '' }, async (base) => {
+    const res = await fetch(`${base}/`);
+    assert.equal(res.status, 503);
+    assert.match((await res.json()).detail.join(' '), /SESSION_SECRET must be set/i);
+  });
 });

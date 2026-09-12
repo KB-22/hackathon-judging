@@ -50,8 +50,7 @@ function sessionMiddleware() {
   if (!process.env.SESSION_SECRET) console.warn('[warn] SESSION_SECRET not set - using an insecure default. Set it in .env for a real event.');
   // Serverless hosts always terminate TLS, so the cookie must be marked secure
   // there or browsers will refuse to store it on the https origin.
-  const onHttps = process.env.COOKIE_SECURE === '1'
-    || !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
+  const onHttps = process.env.COOKIE_SECURE === '1' || db.IS_HOSTED;
   return session({
     store: new DbStore(),
     name: 'hj.sid',
