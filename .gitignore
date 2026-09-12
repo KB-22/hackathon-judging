@@ -4,3 +4,4 @@ data/*.db-*
 .env
 sql/002_data.sql
 data/judge-credentials.txt
+sql/000_setup_all.sql

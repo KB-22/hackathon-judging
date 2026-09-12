@@ -71,12 +71,18 @@ router.put('/scores/:teamId', ah(async (req, res) => {
   const q = db.q;
   const teamId = Number(req.params.teamId);
   const judgeId = req.user.id;
-  if (!(await isAssigned(q, judgeId, teamId))) return res.status(403).json({ error: 'This team is not assigned to you' });
 
-  const settings = await db.getSettings(q);
+  // These four reads do not depend on each other. Issuing them together turns
+  // four network round trips into one, which matters on a remote database.
+  const [assigned, settings, existing, criteria] = await Promise.all([
+    isAssigned(q, judgeId, teamId),
+    db.getSettings(q),
+    q.one('SELECT * FROM scores WHERE judge_id = ? AND team_id = ?', [judgeId, teamId]),
+    activeCriteria(q),
+  ]);
+
+  if (!assigned) return res.status(403).json({ error: 'This team is not assigned to you' });
   if (settings.judging_locked === '1') return res.status(423).json({ error: 'Judging is locked by the administrator' });
-
-  const existing = await q.one('SELECT * FROM scores WHERE judge_id = ? AND team_id = ?', [judgeId, teamId]);
   if (existing && existing.status === 'submitted' && settings.allow_edit_after_submit === '0') {
     return res.status(409).json({ error: 'This score has already been submitted and cannot be edited' });
   }
@@ -84,7 +90,6 @@ router.put('/scores/:teamId', ah(async (req, res) => {
   const submit = !!req.body?.submit;
   const rawItems = req.body?.items && typeof req.body.items === 'object' ? req.body.items : {};
   const comments = req.body?.comments == null ? null : String(req.body.comments).slice(0, 2000);
-  const criteria = await activeCriteria(q);
 
   const items = {};
   const errors = [];
@@ -117,8 +122,14 @@ router.put('/scores/:teamId', ah(async (req, res) => {
       scoreId = await t.id('INSERT INTO scores (judge_id, team_id, status, comments, created_at, updated_at, submitted_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [judgeId, teamId, status, comments, ts, ts, submit ? ts : null]);
     }
-    for (const [cid, marks] of Object.entries(items)) {
-      await t.run('INSERT INTO score_items (score_id, criterion_id, marks) VALUES (?, ?, ?)', [scoreId, Number(cid), marks]);
+    // One multi-row insert rather than one per criterion: against a remote
+    // database those nine round trips dominated the time a judge spends
+    // waiting for "Submit" to complete.
+    const entries = Object.entries(items);
+    if (entries.length) {
+      await t.run(
+        `INSERT INTO score_items (score_id, criterion_id, marks) VALUES ${entries.map(() => '(?, ?, ?)').join(', ')}`,
+        entries.flatMap(([cid, marks]) => [scoreId, Number(cid), marks]));
     }
     // Immutable journal entry: the original marks are never overwritten.
     await t.run(`INSERT INTO score_history (score_id, judge_id, team_id, status, items_json, total, comments, changed_by, changed_at)

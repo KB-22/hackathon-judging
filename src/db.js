@@ -65,6 +65,14 @@ async function init() {
     ? require('./drivers/postgres').create({ connectionString: CONNECTION_STRING })
     : require('./drivers/sqlite').create({ dbPath: DB_PATH });
   bootstrapInfo = await bootstrap(driver);
+  // Open the pool up front on a long-running server: a query costs
+  // milliseconds but a new connection to a distant region costs seconds, so
+  // paying it once at startup keeps every page load fast.
+  if (driver.warm) {
+    const t = Date.now();
+    const opened = await driver.warm();
+    if (opened) console.log(`[db] pre-opened ${opened} connections in ${Date.now() - t} ms`);
+  }
   return driver;
 }
 

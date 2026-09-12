@@ -42,23 +42,64 @@ Switching drivers changes nothing else: the same SQL runs on both, and `npm test
 
 ### Setting up Supabase
 
-The connection string goes in `.env`. Supabase Dashboard → Project Settings → Database → Connection string → **Session pooler** tab → copy the URI and replace `[YOUR-PASSWORD]`:
+**The quickest path — one paste, no tools.** Generate a single file containing
+the schema and your current event data, then run it once:
+
+```bash
+npm run db:bundle
+```
+
+Open the Supabase Dashboard → **SQL Editor** → New query → paste the whole of
+`sql/000_setup_all.sql` → Run. It creates the tables, loads teams/judges/panels/
+assignments, and finishes with a verification query. Running it again is safe.
+
+**Then point the app at Supabase.** In `.env`:
+
+```
+DB_DRIVER=postgres
+SUPABASE_DB_URL=postgresql://postgres:PASSWORD@db.<ref>.supabase.co:5432/postgres
+```
+
+That is the **Direct connection** ("basic") string from Dashboard → Connect.
+The username is plain `postgres`. If the password contains `@ : / ? #` or `%`,
+percent-encode it — `@` becomes `%40` — or the URL parser reads it as the host
+separator.
+
+The direct host is IPv6-only on the free plan. On a network without IPv6, use
+the **Session pooler** instead, which is IPv4 and otherwise identical:
 
 ```
 SUPABASE_DB_URL=postgresql://postgres.<ref>:PASSWORD@aws-0-<region>.pooler.supabase.com:5432/postgres
 ```
 
-Use the **Session pooler** string: it works over IPv4, unlike the direct `db.<ref>.supabase.co` host. If the password contains `@ : / ? #` or `%`, percent-encode it — `@` becomes `%40` — or the URL parser reads it as the host separator.
+Verify with `npm run db:check`, which prints row counts and panel sizes.
 
-Then, if port 5432 is reachable from your machine:
+**If port 5432 is reachable you can skip the SQL Editor entirely:**
 
 ```bash
 npm run db:setup            # create the tables
 npm run db:push -- --force  # copy the local event up, preserving ids
-npm run db:check            # confirm row counts and panel sizes
 ```
 
-Finally set `DB_DRIVER=postgres` in `.env` and `npm start`.
+### Latency: pick the right database for the day
+
+A local SQLite write takes about a millisecond. The same write against Supabase
+in another region takes seconds, because every statement is a network round
+trip. Measured from India against a Seoul project:
+
+| Action | SQLite | Supabase (direct) |
+|---|---|---|
+| Judge saves or submits a score | ~5 ms | ~2.9 s |
+| Admin dashboard | ~20 ms | ~1.0 s |
+
+Both are usable, but for a single-venue event on one laptop SQLite is markedly
+snappier and has no network dependency at all. Use Supabase when the app is
+deployed, when several people need the same data, or when you want the results
+in the cloud. Switching is one line in `.env`.
+
+The Postgres driver pre-opens its connection pool at startup and enables TCP
+keepalives, because establishing a connection costs seconds while a query on an
+open one costs milliseconds.
 
 ### If port 5432 is blocked
 

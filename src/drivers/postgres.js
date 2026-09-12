@@ -89,7 +89,9 @@ function buildApi(runner) {
  * One connection per instance is the standard pattern; override with PG_POOL_MAX.
  */
 const IS_SERVERLESS = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
-const DEFAULT_MAX = Number(process.env.PG_POOL_MAX) || (IS_SERVERLESS ? 1 : 10);
+const DEFAULT_MAX = Number(process.env.PG_POOL_MAX) || (IS_SERVERLESS ? 1 : 12);
+/** How many connections to open up front on a long-running server. */
+const WARM = Number(process.env.PG_POOL_WARM) || (IS_SERVERLESS ? 0 : 8);
 
 function create({ connectionString, max = DEFAULT_MAX }) {
   if (!connectionString) throw new Error('SUPABASE_DB_URL (or DATABASE_URL) is required when DB_DRIVER=postgres');
@@ -97,8 +99,17 @@ function create({ connectionString, max = DEFAULT_MAX }) {
     connectionString,
     max,
     ssl: sslFor(connectionString),
-    connectionTimeoutMillis: IS_SERVERLESS ? 10000 : 15000,
-    idleTimeoutMillis: IS_SERVERLESS ? 10000 : 30000,
+    connectionTimeoutMillis: IS_SERVERLESS ? 10000 : 20000,
+    // Opening a connection to a distant region costs seconds (TLS + auth),
+    // while a query on an open one costs milliseconds. On a long-running
+    // server we therefore never retire idle connections; on serverless the
+    // container is discarded anyway, so a short idle timeout is right.
+    idleTimeoutMillis: IS_SERVERLESS ? 10000 : 0,
+    // TCP keepalives stop home routers, CGNAT and cloud firewalls from
+    // silently dropping a connection that has been idle for a minute, which
+    // would otherwise force a fresh multi-second handshake on the next click.
+    keepAlive: !IS_SERVERLESS,
+    keepAliveInitialDelayMillis: IS_SERVERLESS ? 0 : 10000,
     // Supabase's transaction pooler (port 6543) does not support named prepared
     // statements; node-postgres only uses unnamed ones, so both poolers work.
     application_name: 'hackathon-judging',
@@ -122,6 +133,26 @@ function create({ connectionString, max = DEFAULT_MAX }) {
         try { await client.query('ROLLBACK'); } catch (_) { /* ignore */ }
         throw e;
       } finally { client.release(); }
+    },
+    /**
+     * Opens `n` connections up front so the first page load does not pay the
+     * multi-second TLS handshake for each one. Failures are non-fatal: the
+     * pool simply opens them on demand instead.
+     */
+    async warm(n = WARM) {
+      if (n <= 0) return 0;
+      const clients = [];
+      try {
+        await Promise.all(Array.from({ length: Math.min(n, max) }, async () => {
+          const c = await pool.connect();
+          clients.push(c);
+        }));
+      } catch (e) {
+        console.warn(`[db] pre-warm stopped early: ${e.message}`);
+      } finally {
+        for (const c of clients) c.release();
+      }
+      return clients.length;
     },
     async close() { await pool.end(); },
     describe: () => {

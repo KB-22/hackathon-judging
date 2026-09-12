@@ -10,6 +10,7 @@
     "seed:demo": "node --no-warnings=ExperimentalWarning src/seed.js --demo",
     "import": "node --no-warnings=ExperimentalWarning src/import-registrations.js",
     "db:setup": "node --no-warnings=ExperimentalWarning scripts/db-setup.js",
+    "db:bundle": "node --no-warnings=ExperimentalWarning scripts/db-bundle.js",
     "db:check": "node --no-warnings=ExperimentalWarning scripts/db-check.js",
     "db:push": "node --no-warnings=ExperimentalWarning scripts/db-push.js",
     "db:dump": "node --no-warnings=ExperimentalWarning scripts/db-dump.js",
