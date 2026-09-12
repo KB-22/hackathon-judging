@@ -83,14 +83,24 @@ function buildApi(runner) {
   };
 }
 
-function create({ connectionString, max = 10 }) {
+/**
+ * Serverless hosts scale by running many short-lived instances, so each one
+ * must hold as few database connections as possible or the pooler runs out.
+ * One connection per instance is the standard pattern; override with PG_POOL_MAX.
+ */
+const IS_SERVERLESS = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
+const DEFAULT_MAX = Number(process.env.PG_POOL_MAX) || (IS_SERVERLESS ? 1 : 10);
+
+function create({ connectionString, max = DEFAULT_MAX }) {
   if (!connectionString) throw new Error('SUPABASE_DB_URL (or DATABASE_URL) is required when DB_DRIVER=postgres');
   const pool = new Pool({
     connectionString,
     max,
     ssl: sslFor(connectionString),
-    connectionTimeoutMillis: 15000,
-    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: IS_SERVERLESS ? 10000 : 15000,
+    idleTimeoutMillis: IS_SERVERLESS ? 10000 : 30000,
+    // Supabase's transaction pooler (port 6543) does not support named prepared
+    // statements; node-postgres only uses unnamed ones, so both poolers work.
     application_name: 'hackathon-judging',
   });
   pool.on('error', err => console.error('[db] idle client error:', err.message));

@@ -40,51 +40,69 @@ const DEFAULT_SETTINGS = {
 const DRIVER = (process.env.DB_DRIVER || 'sqlite').toLowerCase();
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'judging.db');
 const CONNECTION_STRING = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL || '';
+/** True on Vercel / Lambda / Netlify: read-only disk, containers come and go. */
+const IS_SERVERLESS = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
+const IS_POSTGRES = ['postgres', 'pg', 'supabase'].includes(DRIVER);
 
 let driver = null;
+let bootstrapInfo = null;
 
 function now() { return new Date().toISOString(); }
 
 /** Opens the configured driver and makes sure the schema and defaults exist. */
 async function init() {
   if (driver) return driver;
-  if (DRIVER === 'postgres' || DRIVER === 'pg' || DRIVER === 'supabase') {
-    driver = require('./drivers/postgres').create({ connectionString: CONNECTION_STRING });
-    await assertPostgresSchema(driver);
-  } else if (DRIVER === 'sqlite') {
-    driver = require('./drivers/sqlite').create({ dbPath: DB_PATH });
-  } else {
+  if (!IS_POSTGRES && DRIVER !== 'sqlite') {
     throw new Error(`Unknown DB_DRIVER "${DRIVER}". Use "sqlite" or "postgres".`);
   }
-  await seedDefaults(driver);
+  if (!IS_POSTGRES && IS_SERVERLESS) {
+    throw new Error(
+      'DB_DRIVER=sqlite cannot run on a serverless host. The filesystem is read-only and each\n' +
+      'invocation may get a fresh container, so every score would be lost immediately.\n' +
+      'Set DB_DRIVER=postgres and SUPABASE_DB_URL in the project environment variables.');
+  }
+  driver = IS_POSTGRES
+    ? require('./drivers/postgres').create({ connectionString: CONNECTION_STRING })
+    : require('./drivers/sqlite').create({ dbPath: DB_PATH });
+  bootstrapInfo = await bootstrap(driver);
   return driver;
 }
 
-async function assertPostgresSchema(d) {
-  let ok = false;
+/**
+ * Single round trip that both proves the schema is present and reports what
+ * still needs seeding. Kept to one query because it runs on every serverless
+ * cold start.
+ */
+async function bootstrap(d) {
+  let counts;
   try {
-    ok = !!(await d.one("SELECT 1 AS ok FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'settings'"));
+    counts = await d.one(`SELECT
+      (SELECT COUNT(*) FROM criteria) AS criteria,
+      (SELECT COUNT(*) FROM settings) AS settings,
+      (SELECT COUNT(*) FROM users WHERE role = 'admin') AS admins`);
   } catch (e) {
+    if (!IS_POSTGRES) throw e;
+    const text = `${e.message || ''} ${e.code || ''}`;
+    if (/does not exist|42P01|no such table/i.test(text)) {
+      throw new Error(
+        'Connected to Postgres, but the judging tables are missing.\n' +
+        'Create them with `npm run db:setup`, or paste sql/001_schema.sql into the Supabase SQL Editor.');
+    }
     const why = await require('./net-diagnose').explain(CONNECTION_STRING, e);
     throw new Error(`Cannot reach the Postgres database.\n\n${why}`);
   }
-  if (!ok) {
-    throw new Error('Connected to Postgres, but the judging tables are missing.\n' +
-      'Create them first: npm run db:setup   (or paste sql/001_schema.sql into the Supabase SQL Editor).');
-  }
-}
 
-/** Idempotent: seeds the 9 default criteria and the default settings. */
-async function seedDefaults(d = driver) {
-  const { c } = await d.one('SELECT COUNT(*) AS c FROM criteria');
-  if (Number(c) === 0) {
+  if (Number(counts.criteria) === 0) {
     for (const [i, [name, max, desc]] of DEFAULT_CRITERIA.entries()) {
       await d.run('INSERT INTO criteria (name, max_marks, description, sort_order) VALUES (?, ?, ?, ?)', [name, max, desc, i + 1]);
     }
   }
-  for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
-    await d.run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING', [k, v]);
+  if (Number(counts.settings) < Object.keys(DEFAULT_SETTINGS).length) {
+    for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
+      await d.run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING', [k, v]);
+    }
   }
+  return { admins: Number(counts.admins) };
 }
 
 async function getSettings(q = driver) {
@@ -130,28 +148,32 @@ function describeError(err) {
   if (code === '42P01' || /no such table/i.test(msg)) {
     return { status: 503, error: 'Database tables are missing - run npm run db:setup' };
   }
-  if (['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ENETUNREACH'].includes(code)) {
-    return { status: 503, error: 'Database unreachable. Check the connection and try again.' };
+  if (['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'ENETUNREACH', 'ECONNRESET'].includes(code)) {
+    return { status: 503, error: 'Database unreachable. Please try again in a moment.' };
   }
   return null;
 }
 
 module.exports = {
   init,
-  seedDefaults,
+  bootstrap,
   get q() {
     if (!driver) throw new Error('Database not initialised - call db.init() first');
     return driver;
   },
+  get bootstrapInfo() { return bootstrapInfo; },
   tx: (fn) => module.exports.q.tx(fn),
   getSettings,
   setSetting,
   audit,
   describeError,
   now,
-  close: async () => { if (driver) { await driver.close(); driver = null; } },
+  close: async () => { if (driver) { await driver.close(); driver = null; bootstrapInfo = null; } },
   describe: () => (driver ? driver.describe() : `${DRIVER} (not connected)`),
   DEFAULT_CRITERIA,
+  DEFAULT_SETTINGS,
   DRIVER,
   DB_PATH,
+  IS_SERVERLESS,
+  IS_POSTGRES,
 };

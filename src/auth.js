@@ -3,11 +3,17 @@ const session = require('express-session');
 const db = require('./db');
 
 /** Database-backed session store, so logins survive restarts and redeploys. */
+const IS_SERVERLESS = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
+
 class DbStore extends session.Store {
   constructor() {
     super();
-    const timer = setInterval(() => this.prune(), 10 * 60 * 1000);
-    if (timer.unref) timer.unref();
+    // Timers do not run between serverless invocations, so there the sweep is
+    // done opportunistically on writes instead of on a schedule.
+    if (!IS_SERVERLESS) {
+      const timer = setInterval(() => this.prune(), 10 * 60 * 1000);
+      if (timer.unref) timer.unref();
+    }
   }
   get(sid, cb) {
     db.q.one('SELECT sess, expires_at FROM sessions WHERE sid = ?', [sid])
@@ -24,7 +30,13 @@ class DbStore extends session.Store {
       `INSERT INTO sessions (sid, sess, expires_at) VALUES (?, ?, ?)
        ON CONFLICT (sid) DO UPDATE SET sess = excluded.sess, expires_at = excluded.expires_at`,
       [sid, JSON.stringify(sess), Date.now() + maxAge])
-      .then(() => cb && cb(null)).catch(e => cb && cb(e));
+      .then(() => {
+        // Roughly one write in fifty also clears expired rows, so the table
+        // cannot grow without bound where the timer never fires.
+        if (IS_SERVERLESS && Math.random() < 0.02) this.prune();
+        cb && cb(null);
+      })
+      .catch(e => cb && cb(e));
   }
   destroy(sid, cb) {
     db.q.run('DELETE FROM sessions WHERE sid = ?', [sid]).then(() => cb && cb(null)).catch(e => cb && cb(e));
@@ -36,6 +48,10 @@ class DbStore extends session.Store {
 function sessionMiddleware() {
   const secret = process.env.SESSION_SECRET || 'dev-insecure-secret-change-me';
   if (!process.env.SESSION_SECRET) console.warn('[warn] SESSION_SECRET not set - using an insecure default. Set it in .env for a real event.');
+  // Serverless hosts always terminate TLS, so the cookie must be marked secure
+  // there or browsers will refuse to store it on the https origin.
+  const onHttps = process.env.COOKIE_SECURE === '1'
+    || !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY);
   return session({
     store: new DbStore(),
     name: 'hj.sid',
@@ -43,10 +59,11 @@ function sessionMiddleware() {
     resave: false,
     saveUninitialized: false,
     rolling: true,
+    proxy: onHttps,
     cookie: {
       httpOnly: true,
       sameSite: 'lax',
-      secure: process.env.COOKIE_SECURE === '1',
+      secure: onHttps,
       maxAge: 12 * 60 * 60 * 1000,
     },
   });

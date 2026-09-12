@@ -1,0 +1,15 @@
+# Keep the deployment bundle small and make sure no local data or secrets
+# are uploaded to Vercel. (.env and data/ are already gitignored, but
+# `vercel deploy` from the CLI uploads the working directory, not just git.)
+.env
+.env.*
+!.env.example
+data/
+sql/002_data.sql
+tests/
+node_modules/
+.git/
+*.db
+*.db-wal
+*.db-shm
+*.xlsx

@@ -1,7 +1,6 @@
 'use strict';
 /** Excel / CSV exports of the admin analytics. Admin only. */
 const express = require('express');
-const ExcelJS = require('exceljs');
 const analytics = require('../analytics');
 const { requireRole, ah } = require('../auth');
 
@@ -138,6 +137,9 @@ router.get('/csv', ah(async (req, res) => {
 }));
 
 router.get('/xlsx', ah(async (req, res) => {
+  // Loaded on demand: ExcelJS is the heaviest dependency and only the workbook
+  // export needs it, so it stays out of every serverless cold start.
+  const ExcelJS = require('exceljs');
   const a = await analytics.dashboard(filtersFrom(req.query));
   const tables = buildTables(a);
   const wb = new ExcelJS.Workbook();
